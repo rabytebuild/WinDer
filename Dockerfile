@@ -1,25 +1,34 @@
-# Use a base image with Windows and PowerShell Core
-FROM mcr.microsoft.com/windows/servercore:ltsc2019
+# Use a base image with Ubuntu
+FROM ubuntu:latest
 
-# Set the working directory
-WORKDIR C:\app
+# Install dependencies
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y wget unzip xrdp openssh-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Download and install ngrok
-RUN powershell -Command $ErrorActionPreference = 'Stop'; \
-    Invoke-WebRequest -Uri 'https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip' -OutFile 'ngrok.zip'; \
-    Expand-Archive -Path 'ngrok.zip' -DestinationPath C:\app; \
-    Remove-Item -Path 'ngrok.zip'
+RUN wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip -O ngrok.zip && \
+    unzip ngrok.zip && \
+    rm ngrok.zip
 
-# Configure ngrok authentication using an environment variable
-ENV NGROK_AUTH_TOKEN=
+# Authenticate ngrok
+RUN ./ngrok authtoken 2Hd7yeF4INCKbg2aP9rGMLnDqBX_5K7WhATjW8eUxS6UoHSRa
 
-# Enable Terminal Services and remote desktop access
-RUN powershell -Command $ErrorActionPreference = 'Stop'; \
-    Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0; \
-    Enable-NetFirewallRule -DisplayGroup 'Remote Desktop'; \
-    Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name 'UserAuthentication' -Value 1; \
-    New-LocalUser -Name 'runneradmin' -Password (ConvertTo-SecureString -AsPlainText 'Rabiu2004@' -Force); \
-    Add-LocalGroupMember -Group 'Administrators' -Member 'runneradmin'
+# Enable xrdp
+RUN sed -i 's/^#\(.*xrdp.*\)/\1/' /etc/xrdp/xrdp.ini
 
-# Set the command to create the ngrok tunnel
-CMD ["powershell", "-NoProfile", "-Command", "./ngrok/ngrok.exe", "tcp", "3389"]
+# Start xrdp service
+RUN service xrdp start
+
+# Set user password
+RUN echo 'runneradmin:Rabiu2004@' | chpasswd
+
+# Enable SSH access
+RUN systemctl enable ssh && systemctl start ssh
+
+# Expose the necessary ports
+EXPOSE 3389
+
+# Command to create the ngrok tunnel
+CMD ["./ngrok", "tcp", "3389"]
